@@ -1,0 +1,23 @@
+{
+    "name": "kowalskidawid/formsec",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "FormSec\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Dawid Kowalski",
+            "email": "dawid@apliko.cc"
+        }
+    ],
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    }
+}
