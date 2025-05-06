@@ -8,11 +8,28 @@ use Exception;
 class Checker
 {
     const IS_VPN_IP = 50;
+    const IS_RUSSIAN_SERVER_PROVIDER = 30;
     private int $score = 100;
     const DOMAIN_ON_CERT_ALERTS_LIST = 40;
     const IS_SERVER_IP = 20;
     const IS_NEW_DOMAIN = 20;
     const IS_XSS = 40;
+    const OTHER_COUNTRY = 30;
+    const CONTAINS_PASTE_BIN_URL = 10;
+
+    public function check(string $message, string $email, string $ipAddress, array $attachments = [])
+    {
+        $this->score = 100;
+        $this->checkIp($ipAddress);
+        $domainFromEmail = explode('@', $email)[1];
+        $this->checkDomain($domainFromEmail);
+        $this->checkContent($message);
+        //$this->checkIfFromOtherCountry($domainFromEmail);
+        if ($this->score < 0) {
+            $this->score = 0;
+        }
+        return $this->score;
+    }
 
     public function checkDomain(string $domain): void
     {
@@ -45,10 +62,12 @@ class Checker
         if ($this->isVpn($info)) {
             $this->score -= self::IS_VPN_IP;
         }
+        if ($this->isRussianServerProvider($info)) {
+            $this->score -= self::IS_RUSSIAN_SERVER_PROVIDER;
+        }
         if ($this->isScrapeProxy($ip)) {
             $this->score -= self::IS_VPN_IP;
         }
-
     }
 
     private function getRipeInfo(string $ip): string
@@ -140,7 +159,8 @@ class Checker
             'Hoster',
             'Zomro',
             'FirstVDS',
-            'Fornex'
+            'Fornex',
+            'LEASEWEB'
         ];
         $isServerProvider = false;
         foreach ($providers as $keyword) {
@@ -151,6 +171,7 @@ class Checker
         }
         return $isServerProvider;
     }
+
     private function isVpn(string $info): bool
     {
         $keywords = [
@@ -192,10 +213,16 @@ class Checker
         return stripos($file, $ip) !== false;
     }
 
-    public function checkContent(string $string)
+    public function checkContent(string $content)
     {
-        if ($this->isXss($string)) {
+        if ($this->isXss($content)) {
             $this->score -= self::IS_XSS;
+        }
+        if ($this->containsPasteBinUrl($content)) {
+            $this->score -= self::CONTAINS_PASTE_BIN_URL;
+        }
+        if ($this->containsCyrillic($content)) {
+            $this->score -= self::CONTAINS_PASTE_BIN_URL;
         }
     }
 
@@ -462,11 +489,12 @@ class Checker
             'click' => 'whois.nic.click',
             'shop' => 'whois.nic.shop'
         ];
-        $server = $whoisServers[trim($tld)];
-        if (empty($server)) {
-            $server = 'whois.nic.' . $tld;
+        $tld = trim($tld);
+        $server = 'whois.nic.' . $tld;
+        if (isset($whoisServers[$tld])) {
+            $server = $whoisServers[$tld];
         }
-        $fp = fsockopen($server, 43, $errno, $errMessage, 10);
+        $fp = @fsockopen($server, 43, $errno, $errMessage, 10);
         if (!$fp) {
             throw new Exception('WhoIs error: ' . $errMessage . ' ' . $errno);
         }
@@ -489,7 +517,7 @@ class Checker
     {
         $parts = explode(".", $domain);
         $count = count($parts);
-        $doubleTLDs = ['co.uk', 'org.uk', 'gov.uk', 'com.pl', 'net.pl', 'edu.pl'];
+        $doubleTLDs = ['co.uk', 'org.uk', 'gov.uk', 'com.pl', 'net.pl', 'edu.pl', 'co.in', 'edu.vn'];
         $tld = $parts[$count - 2] . '.' . $parts[$count - 1];
         if (in_array($tld, $doubleTLDs)) {
             $domain = $parts[$count - 3] . '.' . $tld;
@@ -510,5 +538,36 @@ class Checker
             $tld = $possibleTld;
         }
         return $tld;
+    }
+
+    private function isRussianServerProvider(string $info)
+    {
+        preg_match('/country:\s*(\w{2})/i', $info, $matches);
+        $isRussianServerProvider = false;
+        if (!empty($matches[1]) && $matches[1] == 'RU') {
+            $isRussianServerProvider = true;
+        }
+        return $isRussianServerProvider;
+    }
+
+    private function containsPasteBinUrl(string $message)
+    {
+        $keywords = [
+            'pastebin.com',
+            'devpost.com'
+        ];
+        $containsPasteBinUrl = false;
+        foreach ($keywords as $keyword) {
+            if (stripos($message, $keyword) !== false) {
+                $containsPasteBinUrl = true;
+                break;
+            }
+        }
+        return $containsPasteBinUrl;
+    }
+
+    private function containsCyrillic(string $content)
+    {
+        return preg_match('/\p{Cyrillic}/u', $content);
     }
 }

@@ -12,28 +12,8 @@ Install via [Composer](https://getcomposer.org/):
 ```
 use FormSec\Chercker;
 
-$checker = new Chercker('192.168.1.1', 'email@example.com', 'my message');
-$score = $checker->check();
-```
-
-## ⚙️ How It Works
-Each instance of FormSec starts with a security score of 100. Points are subtracted if a threat is detected according to the following rules:
-
-Condition	Constant	Deduction
-IP is likely a VPN	-50
-
-Domain found on certificate alerts list	-40
-
-IP matches known server providers	-20
-
-Domain is newly registered	-20
-
-XSS attempt detected	-40
-
-Example
-```
-$checker = new Checker('xxx.xxx.xxx.xxx', 'contact@suspicious-domain.com', '<script>alert(1)</script>');
-echo $$checker->check(); // 100 - 40 - 40 = 20
+$checker = new Chercker();
+$score = $checker->check('192.168.1.1', 'email@example.com', 'my message');
 ```
 
 ## 📄 License
