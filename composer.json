@@ -1,6 +1,8 @@
 {
     "name": "kowalskidawid/formsec",
+    "description": "FormSec is a PHP library that evaluates the security of incoming data by detecting threats.\n\n",
     "type": "library",
+    "license": "MIT",
     "autoload": {
         "psr-4": {
             "FormSec\\": "src/"
@@ -14,7 +16,9 @@
     "authors": [
         {
             "name": "Dawid Kowalski",
-            "email": "dawid@apliko.cc"
+            "email": "dawid@apliko.cc",
+            "homepage": "",
+            "role": "Developer"
         }
     ],
     "require-dev": {

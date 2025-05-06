@@ -127,7 +127,20 @@ class Checker
             'nforce',
             'shinjiru',
             'seflow',
-            'phoenixnap'
+            'phoenixnap',
+            'altushost',
+            'HOSTiQ',
+            'ukrainian',
+            'Tuthost',
+            'DeltaHost',
+            'Beget',
+            'Timeweb',
+            'Selectel',
+            'SpaceWeb',
+            'Hoster',
+            'Zomro',
+            'FirstVDS',
+            'Fornex'
         ];
         $isServerProvider = false;
         foreach ($providers as $keyword) {
@@ -199,7 +212,8 @@ class Checker
             '/style\s*=\s*["\'].*?expression\s*\(.*?\).*?["\']/is',
             '/<\s*(iframe|embed|object|form|meta|link|style|base|svg|math|xss|xml|template|marquee|noscript).*?>/is',
             '/data\s*:\s*image\/.*?base64,.*?/is',
-            '/(&#x*3c|<)\s*script/is',                          // <meta>
+            '/(&#x*3c|<)\s*script/is',
+            '/<\s*\/?\s*[a-z][a-z0-9]*\b[^>]*>/i',
         ];
         $isXss = false;
         foreach ($patterns as $pattern) {
