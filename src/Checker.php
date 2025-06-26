@@ -9,29 +9,55 @@ class Checker
 {
     const IS_VPN_IP = 50;
     const IS_RUSSIAN_SERVER_PROVIDER = 30;
-    private int $score = 100;
+    const MIME_TYPE_NOT_MATCH = 50;
+    const CONTAINS_VIRUS = 80;
+    const EXECUTABLE_FILE = 30;
+    private $score = 100;
     const DOMAIN_ON_CERT_ALERTS_LIST = 40;
     const IS_SERVER_IP = 20;
     const IS_NEW_DOMAIN = 20;
     const IS_XSS = 40;
     const OTHER_COUNTRY = 30;
     const CONTAINS_PASTE_BIN_URL = 10;
+    const CONTAINS_CYRILLIC = 30;
+    const CONTAINS_OTHER_LANGUAGE = 15;
+    const INVALID_EMAIL_ADDRESS = 40;
 
-    public function check(string $message, string $email, string $ipAddress, array $attachments = [])
+    private $message;
+    private $email;
+    private $ipAddress;
+    private $attachments;
+    private $virusTotalApiKey;
+
+    public function __construct($message, $email, $ipAddress, $attachments = [], $virusTotalApiKey = '')
+    {
+        $this->message = $message;
+        $this->email = $email;
+        $this->ipAddress = $ipAddress;
+        $this->attachments = $attachments;
+        $this->virusTotalApiKey = $virusTotalApiKey;
+    }
+
+    public function check()
     {
         $this->score = 100;
-        $this->checkIp($ipAddress);
-        $domainFromEmail = explode('@', $email)[1];
-        $this->checkDomain($domainFromEmail);
-        $this->checkContent($message);
-        //$this->checkIfFromOtherCountry($domainFromEmail);
+        $this->checkIp($this->ipAddress);
+
+        $domainFromEmail = explode('@', $this->email);
+        if (count($domainFromEmail) != 2) {
+            $this->score -= self::INVALID_EMAIL_ADDRESS;
+        } else {
+            $this->checkDomain($domainFromEmail[1]);
+        }
+        $this->checkContent($this->message);
+        $this->checkAttachments();
         if ($this->score < 0) {
             $this->score = 0;
         }
         return $this->score;
     }
 
-    public function checkDomain(string $domain): void
+    private function checkDomain($domain)
     {
         if ($this->isOnCertAlertList($domain)) {
             $this->score -= self::DOMAIN_ON_CERT_ALERTS_LIST;
@@ -41,19 +67,35 @@ class Checker
         }
     }
 
-    private function isOnCertAlertList(string $domain): bool
+    public function isOnCertAlertList($domain)
     {
-        $filePath = __DIR__ . '/../data/cert_domains.txt';
-        $file = file_get_contents($filePath);
+        $localPath = __DIR__ . '/../data/cert_domains.txt';
+        $useLocal = file_exists($localPath) && (time() - filemtime($localPath) < 30 * 24 * 60 * 60);
+
+        if ($useLocal) {
+            $file = file_get_contents($localPath);
+        } else {
+            $url = 'https://hole.cert.pl/domains/v2/domains.txt';
+            $context = stream_context_create(['http' => ['timeout' => 3]]);
+            $file = @file_get_contents($url, false, $context);
+            if ($file !== false) {
+                @file_put_contents($localPath, $file);
+            } else if (file_exists($localPath)) {
+                $file = file_get_contents($localPath);
+            } else {
+                return false;
+            }
+        }
+
         return stripos($file, $domain) !== false;
     }
 
-    public function getScore(): int
+    public function getScore()
     {
         return $this->score;
     }
 
-    public function checkIp(string $ip): void
+    private function checkIp($ip)
     {
         $info = $this->getRipeInfo($ip);
         if ($this->isServerProvider($info)) {
@@ -70,13 +112,13 @@ class Checker
         }
     }
 
-    private function getRipeInfo(string $ip): string
+    private function getRipeInfo($ip)
     {
         $server = "whois.ripe.net";
         $port = 43;
         $fp = fsockopen($server, $port, $errno, $errstr, 10);
         if (!$fp) {
-            return "Błąd połączenia: $errstr ($errno)";
+            throw new Exception('WhoIs error: ' . $errno . ' ' . $errstr);
         }
         fwrite($fp, "-B $ip\r\n");
         $response = "";
@@ -87,80 +129,20 @@ class Checker
         return $response;
     }
 
-    private function isServerProvider(string $info): bool
+    private function isServerProvider($info)
     {
         $providers = [
             'ovh', 'soyoustart', 'kimsufi', 'amazon', 'aws', 'cloudfront', 'google',
-            'gcp',
-            '1e100',
-            'microsoft',
-            'azure',
-            'msedge',
-            'hetzner',
-            'contabo',
-            'digitalocean',
-            'linode',
-            'akamai',
-            'cloudflare',
-            'alibaba',
-            'aliyun',
-            'oracle',
-            'oraclecloud',
-            'vultr',
-            'choopa',
-            'scaleway',
-            'netcup',
-            'leaseweb',
-            'ovhcloud',
-            'fastly',
-            'cdn77',
-            'stackpath',
-            'upcloud',
-            'serverscom',
-            'ikoula',
-            'dedibox',
-            'iliad',
-            'nocix',
-            'interserver',
-            'rackspace',
-            'dreamhost',
-            'namecheap',
-            'ovpn',
-            'm247',
-            'arubacloud',
-            'aruba',
-            'terrahost',
-            'tpx',
-            'packet',
-            'equinix',
-            'zare',
-            'timeweb',
-            'yandex',
-            'rambler',
-            'baidu',
-            'tencent',
-            'huawei',
-            'mevspace',
-            'snel',
-            'myracloud',
-            'nforce',
-            'shinjiru',
-            'seflow',
-            'phoenixnap',
-            'altushost',
-            'HOSTiQ',
-            'ukrainian',
-            'Tuthost',
-            'DeltaHost',
-            'Beget',
-            'Timeweb',
-            'Selectel',
-            'SpaceWeb',
-            'Hoster',
-            'Zomro',
-            'FirstVDS',
-            'Fornex',
-            'LEASEWEB'
+            'gcp', '1e100', 'microsoft', 'azure', 'msedge', 'hetzner', 'contabo',
+            'digitalocean', 'linode', 'akamai', 'cloudflare', 'alibaba', 'aliyun',
+            'oracle', 'oraclecloud', 'vultr', 'choopa', 'scaleway', 'netcup', 'leaseweb',
+            'ovhcloud', 'fastly', 'cdn77', 'stackpath', 'upcloud', 'serverscom', 'ikoula',
+            'dedibox', 'iliad', 'nocix', 'interserver', 'rackspace', 'dreamhost', 'namecheap',
+            'ovpn', 'm247', 'arubacloud', 'aruba', 'terrahost', 'tpx', 'packet', 'equinix',
+            'zare', 'timeweb', 'yandex', 'rambler', 'baidu', 'tencent', 'huawei', 'mevspace',
+            'snel', 'myracloud', 'nforce', 'shinjiru', 'seflow', 'phoenixnap', 'altushost',
+            'HOSTiQ', 'ukrainian', 'Tuthost', 'DeltaHost', 'Beget', 'Timeweb', 'Selectel',
+            'SpaceWeb', 'Hoster', 'Zomro', 'FirstVDS', 'Fornex', 'LEASEWEB'
         ];
         $isServerProvider = false;
         foreach ($providers as $keyword) {
@@ -172,7 +154,7 @@ class Checker
         return $isServerProvider;
     }
 
-    private function isVpn(string $info): bool
+    private function isVpn($info)
     {
         $keywords = [
             'vpn', 'nordvpn', 'expressvpn', 'surfshark', 'cyberghost', 'privateinternetaccess',
@@ -196,24 +178,40 @@ class Checker
         return $isVpn;
     }
 
-    private function isNewDomain(string $domain)
+    private function isNewDomain($domain)
     {
         $isNewDomain = false;
         $registrationDate = $this->getDomainRegistrationDate($domain);
-        if ($registrationDate > date('Y-m-d', strtotime('-6 month'))) {
+        if (!empty($registrationDate) && $registrationDate > date('Y-m-d', strtotime('-6 month'))) {
             $isNewDomain = true;
         }
         return $isNewDomain;
     }
 
-    private function isScrapeProxy(string $ip): bool
+    private function isScrapeProxy($ip)
     {
-        $filePath = __DIR__ . '/../data/proxies.txt';
-        $file = file_get_contents($filePath);
+        $localPath = __DIR__ . '/../data/proxies.txt';
+        $useLocal = file_exists($localPath) && (time() - filemtime($localPath) < 30 * 24 * 60 * 60);
+
+        if ($useLocal) {
+            $file = file_get_contents($localPath);
+        } else {
+            $url = 'https://formsec.pl/data/proxies.txt';
+            $context = stream_context_create(['http' => ['timeout' => 3]]);
+            $file = @file_get_contents($url, false, $context);
+            if ($file !== false) {
+                @file_put_contents($localPath, $file); // opcjonalnie zaktualizuj lokalnie
+            } else if (file_exists($localPath)) {
+                $file = file_get_contents($localPath); // fallback
+            } else {
+                return false;
+            }
+        }
+
         return stripos($file, $ip) !== false;
     }
 
-    public function checkContent(string $content)
+    private function checkContent($content)
     {
         if ($this->isXss($content)) {
             $this->score -= self::IS_XSS;
@@ -222,11 +220,20 @@ class Checker
             $this->score -= self::CONTAINS_PASTE_BIN_URL;
         }
         if ($this->containsCyrillic($content)) {
-            $this->score -= self::CONTAINS_PASTE_BIN_URL;
+            $this->score -= self::CONTAINS_CYRILLIC;
+        } elseif ($this->containsOtherLanguage($content)) {
+            $this->score -= self::CONTAINS_OTHER_LANGUAGE;
+        }
+        preg_match_all('/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}/i', $content, $matches);
+        if (!empty($matches[0])) {
+            $domains = $matches[0];
+            foreach ($domains as $domain) {
+                $this->checkDomain($domain);
+            }
         }
     }
 
-    private function isXss(string $content): bool
+    private function isXss($content)
     {
         $decoded = html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $cleaned = strtolower(trim($decoded));
@@ -540,7 +547,7 @@ class Checker
         return $tld;
     }
 
-    private function isRussianServerProvider(string $info)
+    private function isRussianServerProvider($info)
     {
         preg_match('/country:\s*(\w{2})/i', $info, $matches);
         $isRussianServerProvider = false;
@@ -550,7 +557,7 @@ class Checker
         return $isRussianServerProvider;
     }
 
-    private function containsPasteBinUrl(string $message)
+    private function containsPasteBinUrl($message)
     {
         $keywords = [
             'pastebin.com',
@@ -566,8 +573,135 @@ class Checker
         return $containsPasteBinUrl;
     }
 
-    private function containsCyrillic(string $content)
+    private function containsCyrillic($content)
     {
         return preg_match('/\p{Cyrillic}/u', $content);
+    }
+
+    private function containsOtherLanguage($content)
+    {
+        $polishWords = ['i', 'że', 'się', 'jest', 'na', 'do', 'nie', 'z', 'jak', 'to', 'co', 'dla', 'tak', 'ale', 'czy', 'ten', 'być'];
+        $englishWords = ['the', 'and', 'is', 'this', 'that', 'you', 'i', 'of', 'to', 'in', 'it', 'for', 'on', 'with', 'as', 'are', 'was'];
+        $polishScore = 0;
+        $englishScore = 0;
+        foreach ($polishWords as $word) {
+            if (preg_match('/\b' . preg_quote($word, '/') . '\b/u', $content)) {
+                $polishScore++;
+            }
+        }
+        foreach ($englishWords as $word) {
+            if (preg_match('/\b' . preg_quote($word, '/') . '\b/u', $content)) {
+                $englishScore++;
+            }
+        }
+        $containsPolishSigns = preg_match('/[ąćęłńóśźż]/u', $content);
+        if ($containsPolishSigns) {
+            $polishScore += 2;
+        }
+        $containsOtherLanguage = true;
+        if (
+            ($polishScore >= $englishScore && $polishScore >= 3)
+            || ($englishScore > $polishScore && $englishScore >= 3)
+        ) {
+            $containsOtherLanguage = false;
+        }
+        return $containsOtherLanguage;
+    }
+
+    function sendToVirusTotal($filePath)
+    {
+        if (!file_exists($filePath)) {
+            throw new Exception('File not found: ' . $filePath);
+        }
+        $url = 'https://www.virustotal.com/api/v3/files';
+        $file = curl_file_create($filePath);
+        $postFields = ['file' => $file];
+        $headers = ['x-apikey: ' . $this->virusTotalApiKey];
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $postFields,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $headers,
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if (curl_errno($ch)) {
+            throw new Exception('cURL error: ' . curl_error($ch));
+        }
+        curl_close($ch);
+        if ($httpCode !== 200 && $httpCode !== 202) {
+            throw new Exception('VirusTotal API returned HTTP ' . $httpCode . ': ' . $response);
+        }
+        $data = json_decode($response, true);
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $data['data']['links']['self'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $headers,
+        ]);
+        $response = curl_exec($ch);
+        $data = json_decode($response, true);
+        $stats = $data['data']['attributes']['stats'];
+        $isVirus = false;
+        if ($stats['malicious'] > 3 || $stats['suspicious']) {
+            $isVirus = true;
+        }
+        return $isVirus;
+    }
+
+    public function checkAttachments()
+    {
+        foreach ($this->attachments as $attachment) {
+            if (!$this->isMimeTypeMatchingExtension($attachment)) {
+                $this->score -= self::MIME_TYPE_NOT_MATCH;
+            }
+            if ($this->isExecutable($attachment)) {
+                $this->score -= self::EXECUTABLE_FILE;
+            }
+            if ($this->sendToVirusTotal($attachment)) {
+                $this->score -= self::CONTAINS_VIRUS;
+            }
+        }
+    }
+
+    private function isMimeTypeMatchingExtension($filePath)
+    {
+        if (!file_exists($filePath)) {
+            throw new Exception('File not found: ' . $filePath);
+        }
+        $fileInfo = finfo_open(FILEINFO_MIME_TYPE);
+        $realMimeType = finfo_file($fileInfo, $filePath);
+        finfo_close($fileInfo);
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $mimeMap = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'pdf' => 'application/pdf',
+            'zip' => 'application/zip',
+            'txt' => 'text/plain',
+            'html' => 'text/html',
+            'htm' => 'text/html',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls' => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'csv' => 'text/csv',
+            'mp4' => 'video/mp4',
+            'mp3' => 'audio/mpeg',
+            'webp' => 'image/webp'
+        ];
+        if (!isset($mimeMap[$extension])) {
+            throw new Exception('Unknown file extension: .' . $extension);
+        }
+        return $mimeMap[$extension] === $realMimeType;
+    }
+
+    private function isExecutable($filePath)
+    {
+        return is_file($filePath) && is_executable($filePath);
     }
 }
