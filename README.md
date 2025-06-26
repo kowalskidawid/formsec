@@ -5,8 +5,9 @@ FormSec to biblioteka napisana w PHP służąca do zabezpieczania formularzy int
 ## 📦 Instalacja
 
 FormSec można zainstalować za pomocą [Composera](https://getcomposer.org):
-
+```
 composer require kowalskidawid/formsec
+```
 🛠 Wymagania
 PHP 5.6 lub nowszy
 
@@ -15,9 +16,7 @@ Co najmniej 50MB wolnego miejsca
 Otwarty dostęp wychodzący na porty: 43, 80, 443
 
 🚀 Szybki start
-php
-Copy
-Edit
+```
 use FormSec\Checker;
 
 $checker = new Checker($message, $email, ['/path/to/file1.txt', '/path/to/file2.txt']);
@@ -25,8 +24,9 @@ $checker->check();
 $score = $checker->getScore();
 
 if ($score < 40) {
-    // Zgłoszenie uznane za niebezpieczne
+    // Wiadomość uznana za niebezpieczna
 }
+```
 🧠 Jak to działa?
 FormSec analizuje:
 
